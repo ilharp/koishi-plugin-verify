@@ -136,16 +136,18 @@ export function apply(ctx: Context, config: Config) {
 
   // ban 指令
   ctx.command('ban <user:user>').action(({ session }, user) => {
+    // 获取 QQ 号
+    const [_, qq] = user.split(':')
     // 禁言对应用户
-    // TODO: 怎么识别 at 人
-    ban(ctx, config, Number(user), Number(session.channelId))
+    ban(ctx, config, Number(qq), Number(session.channelId))
   })
 
   // unban 指令
   ctx.command('unban <user:user>').action(({ session }, user) => {
+    // 获取 QQ 号
+    const [_, qq] = user.split(':')
     // 禁言对应用户
-    // TODO: 怎么识别 at 人
-    unban(ctx, config, Number(user), Number(session.channelId))
+    unban(ctx, config, Number(qq), Number(session.channelId))
   })
 
   // 自助解禁
