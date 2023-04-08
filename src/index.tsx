@@ -139,6 +139,13 @@ export function apply(ctx: Context, config: Config) {
     const [_, qq] = user.split(':')
     // 禁言对应用户
     ban(session.bot, config, Number(qq), Number(session.channelId))
+    // 发送提示消息
+    return (
+      <>
+        <at id={qq} />
+        小伙伴你好~提问和发言前请先看群公告哦~不看群公告就发言会导致你被踢出本群，还请注意~
+      </>
+    )
   })
 
   // unban 指令
