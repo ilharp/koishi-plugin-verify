@@ -1,5 +1,5 @@
 import OneBotBot from '@koishijs/plugin-adapter-onebot'
-import { Context, Schema } from 'koishi'
+import { Bot, Context, Schema } from 'koishi'
 
 const delay = (ms: number) =>
   new Promise((resolve) => {
@@ -49,14 +49,10 @@ export interface Verify {
 /**
  * 禁言
  */
-const ban = (ctx: Context, config: Config, qq: number, group: number) => {
-  ;(ctx.bots[0] as OneBotBot).internal.setGroupBanAsync(
-    group,
-    qq,
-    config.banDuration
-  )
+const ban = async (bot: Bot, config: Config, qq: number, group: number) => {
+  await bot.internal.setGroupBanAsync(group, qq, config.banDuration)
 
-  ctx.database.upsert('verify', [
+  bot.ctx.database.upsert('verify', [
     {
       qq,
       group,
@@ -68,10 +64,10 @@ const ban = (ctx: Context, config: Config, qq: number, group: number) => {
 /**
  * 解禁
  */
-const unban = (ctx: Context, config: Config, qq: number, group: number) => {
-  ;(ctx.bots[0] as OneBotBot).internal.setGroupBanAsync(group, qq, 0)
+const unban = async (bot: Bot, config: Config, qq: number, group: number) => {
+  await bot.internal.setGroupBanAsync(group, qq, 0)
 
-  ctx.database.upsert('verify', [
+  bot.ctx.database.upsert('verify', [
     {
       qq,
       group,
@@ -123,7 +119,12 @@ export function apply(ctx: Context, config: Config) {
   // 有人加群时
   ctx.on('guild-member-added', (session) => {
     // 禁言对应用户
-    ban(ctx, config, Number(session.operatorId), Number(session.channelId))
+    ban(
+      session.bot,
+      config,
+      Number(session.operatorId),
+      Number(session.channelId)
+    )
 
     // 发送入群欢迎消息
     session.sendQueued(
@@ -139,7 +140,7 @@ export function apply(ctx: Context, config: Config) {
     // 获取 QQ 号
     const [_, qq] = user.split(':')
     // 禁言对应用户
-    ban(ctx, config, Number(qq), Number(session.channelId))
+    ban(session.bot, config, Number(qq), Number(session.channelId))
   })
 
   // unban 指令
@@ -147,7 +148,7 @@ export function apply(ctx: Context, config: Config) {
     // 获取 QQ 号
     const [_, qq] = user.split(':')
     // 禁言对应用户
-    unban(ctx, config, Number(qq), Number(session.channelId))
+    unban(session.bot, config, Number(qq), Number(session.channelId))
   })
 
   // 自助解禁
@@ -168,7 +169,8 @@ export function apply(ctx: Context, config: Config) {
       })
 
       // 对每个群解禁
-      for (const r of result) unban(ctx, config, qq, r.group)
+      for (const r of result)
+        unban(ctx.bots[0] as OneBotBot, config, qq, r.group)
     } catch (e: unknown) {
       // Ignore
     }
@@ -181,25 +183,33 @@ export function apply(ctx: Context, config: Config) {
     .action(async ({ options }) => {
       // 返回超过 15 天未自助解禁的用户
       const result = await ctx.database.get('verify', {
-        banned: {
-          $ne: 0,
-          $lt: new Date().getTime() - 1000 * 60 * 60 * 24 * 15,
-        },
+        $and: [
+          {
+            banned: {
+              $ne: 0,
+            },
+          },
+          {
+            banned: {
+              $lt: new Date().getTime() - 1000 * 60 * 60 * 24 * 15,
+            },
+          },
+        ],
       })
 
       if (!result.length) return '目前没有超过 15 天未自助解禁的成员。'
 
       if (options.yes) {
         kick(ctx, result)
-        return '开始踢出 ${result.length} 名成员。'
+        return `开始踢出 ${result.length} 名成员。`
       }
 
       return (
         <message forward>
-          <message>以下 ${result.length} 名成员超过 15 天未自助解禁：</message>$
+          <message>以下 {result.length} 名成员超过 15 天未自助解禁：</message>
           {result.map((x) => (
             <message>
-              所在群：${x.group}QQ：${x.qq}
+              所在群：{x.group}QQ：{x.qq}
             </message>
           ))}
           <message>使用 'clean -y' 自动踢出这些成员。</message>
