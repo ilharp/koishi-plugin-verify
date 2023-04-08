@@ -1,10 +1,5 @@
 import OneBotBot from '@koishijs/plugin-adapter-onebot'
-import { Bot, Context, Schema } from 'koishi'
-
-const delay = (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
+import { Bot, Context, Schema, sleep } from 'koishi'
 
 export const name = 'verify'
 
@@ -81,7 +76,7 @@ const unban = async (bot: Bot, config: Config, qq: number, group: number) => {
  */
 const kick = async (ctx: Context, result: Verify[]) => {
   for (const r of result) {
-    await delay(5000)
+    await sleep(5000)
     await (ctx.bots[0] as OneBotBot).internal.setGroupKick(r.group, r.qq, false)
   }
 }
@@ -127,16 +122,19 @@ export function apply(ctx: Context, config: Config) {
     )
 
     // 发送入群欢迎消息
-    session.sendQueued(
+    session.send(
       <>
-        <at id="session.operatorId" />
+        <at id={session.operatorId} />
         欢迎小伙伴入群~请认真阅读群公告，阅读后即可参与讨论哦~
       </>
     )
   })
 
+  // 注册根指令
+  ctx.command('verify', { authority: 4 })
+
   // ban 指令
-  ctx.command('ban <user:user>').action(({ session }, user) => {
+  ctx.command('verify/ban <user:user>').action(({ session }, user) => {
     // 获取 QQ 号
     const [_, qq] = user.split(':')
     // 禁言对应用户
@@ -144,7 +142,7 @@ export function apply(ctx: Context, config: Config) {
   })
 
   // unban 指令
-  ctx.command('unban <user:user>').action(({ session }, user) => {
+  ctx.command('verify/unban <user:user>').action(({ session }, user) => {
     // 获取 QQ 号
     const [_, qq] = user.split(':')
     // 禁言对应用户
@@ -178,7 +176,7 @@ export function apply(ctx: Context, config: Config) {
 
   // clean 指令
   ctx
-    .command('clean')
+    .command('verify/clean')
     .option('yes', '-y')
     .action(async ({ options }) => {
       // 返回超过 15 天未自助解禁的用户
@@ -209,7 +207,8 @@ export function apply(ctx: Context, config: Config) {
           <message>以下 {result.length} 名成员超过 15 天未自助解禁：</message>
           {result.map((x) => (
             <message>
-              所在群：{x.group}QQ：{x.qq}
+              所在群：{x.group}
+              QQ：{x.qq}
             </message>
           ))}
           <message>使用 'clean -y' 自动踢出这些成员。</message>
