@@ -82,6 +82,8 @@ const kick = async (ctx: Context, result: Verify[]) => {
 }
 
 export function apply(ctx: Context, config: Config) {
+  const logger = ctx.logger('verify')
+
   ctx.model.extend(
     'verify',
     {
@@ -113,18 +115,15 @@ export function apply(ctx: Context, config: Config) {
 
   // 有人加群时
   ctx.on('guild-member-added', (session) => {
+    logger.info(`Member ${session.userId} added into ${session.channelId}`)
+
     // 禁言对应用户
-    ban(
-      session.bot,
-      config,
-      Number(session.operatorId),
-      Number(session.channelId)
-    )
+    ban(session.bot, config, Number(session.userId), Number(session.channelId))
 
     // 发送入群欢迎消息
     session.send(
       <>
-        <at id={session.operatorId} />
+        <at id={session.userId} />
         欢迎小伙伴入群~请认真阅读群公告，阅读后即可参与讨论哦~
       </>
     )
@@ -137,8 +136,12 @@ export function apply(ctx: Context, config: Config) {
   ctx.command('verify/ban <user:user>').action(({ session }, user) => {
     // 获取 QQ 号
     const [_, qq] = user.split(':')
+
+    logger.info(`Ban ${qq} in ${session.channelId}`)
+
     // 禁言对应用户
     ban(session.bot, config, Number(qq), Number(session.channelId))
+
     // 发送提示消息
     return (
       <>
@@ -152,6 +155,9 @@ export function apply(ctx: Context, config: Config) {
   ctx.command('verify/unban <user:user>').action(({ session }, user) => {
     // 获取 QQ 号
     const [_, qq] = user.split(':')
+
+    logger.info(`Unban ${qq} in ${session.channelId}`)
+
     // 禁言对应用户
     unban(session.bot, config, Number(qq), Number(session.channelId))
   })
@@ -161,6 +167,8 @@ export function apply(ctx: Context, config: Config) {
     try {
       // 获得 QQ
       const qq = Number(c.query.qq)
+
+      logger.info(`Self-unban: ${qq}`)
 
       // 检测 QQ 是否合法
       if (!(qq > 10000)) throw new Error()
@@ -177,7 +185,8 @@ export function apply(ctx: Context, config: Config) {
       for (const r of result)
         unban(ctx.bots[0] as OneBotBot, config, qq, r.group)
     } catch (e: unknown) {
-      // Ignore
+      logger.info(`Self-unban failed:`)
+      logger.info(e)
     }
   })
 
