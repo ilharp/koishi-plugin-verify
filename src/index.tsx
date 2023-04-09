@@ -47,13 +47,17 @@ export interface Verify {
 const ban = async (bot: Bot, config: Config, qq: number, group: number) => {
   await bot.internal.setGroupBanAsync(group, qq, config.banDuration)
 
-  await bot.ctx.database.upsert('verify', [
-    {
-      qq,
-      group,
-      banned: new Date().getTime(),
-    },
-  ])
+  await bot.ctx.database.upsert(
+    'verify',
+    [
+      {
+        qq,
+        group,
+        banned: new Date().getTime(),
+      },
+    ],
+    ['qq', 'group']
+  )
 }
 
 /**
@@ -62,13 +66,17 @@ const ban = async (bot: Bot, config: Config, qq: number, group: number) => {
 const unban = async (bot: Bot, config: Config, qq: number, group: number) => {
   await bot.internal.setGroupBanAsync(group, qq, 0)
 
-  await bot.ctx.database.upsert('verify', [
-    {
-      qq,
-      group,
-      banned: 0,
-    },
-  ])
+  await bot.ctx.database.upsert(
+    'verify',
+    [
+      {
+        qq,
+        group,
+        banned: 0,
+      },
+    ],
+    ['qq', 'group']
+  )
 }
 
 /**
