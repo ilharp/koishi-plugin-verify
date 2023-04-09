@@ -188,7 +188,7 @@ export function apply(ctx: Context, config: Config) {
         await unban(bot as OneBotBot, config, qq, r.group)
 
         await bot.sendMessage(
-          r.group as unknown as string,
+          String(r.group),
           <>
             <at id={qq} />
             已成功解禁，小伙伴现在可以开始参与交流了~聊天时注意热情、友善哦~
