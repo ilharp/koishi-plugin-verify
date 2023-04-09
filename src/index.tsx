@@ -9,7 +9,7 @@ export interface Config {
 
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
-    banDuration: Schema.number().default(30 * 24 * 60 * 60),
+    banDuration: Schema.number().default(15 * 24 * 60 * 60),
   }).description('基础'),
 ])
 
@@ -47,7 +47,7 @@ export interface Verify {
 const ban = async (bot: Bot, config: Config, qq: number, group: number) => {
   await bot.internal.setGroupBanAsync(group, qq, config.banDuration)
 
-  bot.ctx.database.upsert('verify', [
+  await bot.ctx.database.upsert('verify', [
     {
       qq,
       group,
@@ -62,7 +62,7 @@ const ban = async (bot: Bot, config: Config, qq: number, group: number) => {
 const unban = async (bot: Bot, config: Config, qq: number, group: number) => {
   await bot.internal.setGroupBanAsync(group, qq, 0)
 
-  bot.ctx.database.upsert('verify', [
+  await bot.ctx.database.upsert('verify', [
     {
       qq,
       group,
@@ -182,8 +182,19 @@ export function apply(ctx: Context, config: Config) {
       })
 
       // 对每个群解禁
-      for (const r of result)
-        unban(ctx.bots[0] as OneBotBot, config, qq, r.group)
+      for (const r of result) {
+        const bot = ctx.bots[0] as Bot
+
+        await unban(bot as OneBotBot, config, qq, r.group)
+
+        await bot.sendMessage(
+          r.group as unknown as string,
+          <>
+            <at id={qq} />
+            已成功解禁，小伙伴现在可以开始参与交流了~聊天时注意热情、友善哦~
+          </>
+        )
+      }
     } catch (e: unknown) {
       logger.info(`Self-unban failed:`)
       logger.info(e)
