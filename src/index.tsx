@@ -79,16 +79,6 @@ const unban = async (bot: Bot, config: Config, qq: number, group: number) => {
   )
 }
 
-/**
- * 踢出成员
- */
-const kick = async (ctx: Context, result: Verify[]) => {
-  for (const r of result) {
-    await sleep(5000)
-    await (ctx.bots[0] as OneBotBot).internal.setGroupKick(r.group, r.qq, false)
-  }
-}
-
 export function apply(ctx: Context, config: Config) {
   const logger = ctx.logger('verify')
 
@@ -118,6 +108,7 @@ export function apply(ctx: Context, config: Config) {
     },
     {
       autoInc: true,
+      unique: [['qq', 'group']],
     }
   )
 
@@ -132,13 +123,15 @@ export function apply(ctx: Context, config: Config) {
     session.send(
       <>
         <at id={session.userId} />
-        欢迎小伙伴入群~请认真阅读群公告，阅读后即可参与讨论哦~
+        欢迎小伙伴入群~请认真阅读群公告，阅读后点击公告中的「参与讨论」即可解禁哦~
       </>
     )
   })
 
   // 注册根指令
-  ctx.command('verify', { authority: 4 })
+  ctx.command('verify', {
+    authority: 4,
+  })
 
   // ban 指令
   ctx.command('verify/ban <user:user>').action(({ session }, user) => {
@@ -166,7 +159,7 @@ export function apply(ctx: Context, config: Config) {
 
     logger.info(`Unban ${qq} in ${session.channelId}`)
 
-    // 禁言对应用户
+    // 解禁对应用户
     unban(session.bot, config, Number(qq), Number(session.channelId))
   })
 
@@ -214,7 +207,7 @@ export function apply(ctx: Context, config: Config) {
     .command('verify/clean')
     .option('yes', '-y')
     .action(async ({ options }) => {
-      // 返回超过 15 天未自助解禁的用户
+      // 返回超过 3 天未自助解禁的用户
       const result = await ctx.database.get('verify', {
         $and: [
           {
@@ -224,22 +217,33 @@ export function apply(ctx: Context, config: Config) {
           },
           {
             banned: {
-              $lt: new Date().getTime() - 1000 * 60 * 60 * 24 * 15,
+              $lt: new Date().getTime() - 1000 * 60 * 60 * 24 * 3,
             },
           },
         ],
       })
 
-      if (!result.length) return '目前没有超过 15 天未自助解禁的成员。'
+      if (!result.length) return '目前没有超过 3 天未自助解禁的成员。'
 
       if (options.yes) {
-        kick(ctx, result)
+        ;(async () => {
+          for (const r of result) {
+            await sleep(5000)
+            logger.info(`Kick: ${r.qq} in ${r.group}`)
+            ;(ctx.bots[0] as OneBotBot).internal.setGroupKickAsync(
+              r.group,
+              r.qq,
+              false
+            )
+          }
+        })()
+
         return `开始踢出 ${result.length} 名成员。`
       }
 
       return (
         <message forward>
-          <message>以下 {result.length} 名成员超过 15 天未自助解禁：</message>
+          <message>以下 {result.length} 名成员超过 3 天未自助解禁：</message>
           {result.map((x) => (
             <message>
               所在群：{x.group}
