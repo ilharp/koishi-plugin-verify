@@ -5,11 +5,17 @@ export const name = 'verify'
 
 export interface Config {
   banDuration: number
+  waitDuration: number
 }
 
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
-    banDuration: Schema.number().default(15 * 24 * 60 * 60),
+    banDuration: Schema.number()
+      .default(15 * 24 * 60 * 60)
+      .description('入群后禁言的时长（秒），默认 15 天。'),
+    waitDuration: Schema.number()
+      .default(3)
+      .description('踢出前等待的时长（天），默认 3 天。'),
   }).description('基础'),
 ])
 
@@ -197,7 +203,7 @@ export function apply(ctx: Context, config: Config) {
         )
       }
     } catch (e: unknown) {
-      logger.info(`Self-unban failed:`)
+      logger.info('Self-unban failed:')
       logger.info(e)
     }
   })
@@ -207,7 +213,7 @@ export function apply(ctx: Context, config: Config) {
     .command('verify/clean')
     .option('yes', '-y')
     .action(async ({ options }) => {
-      // 返回超过 3 天未自助解禁的用户
+      // 返回超过 config.waitDuration 天未自助解禁的用户
       const result = await ctx.database.get('verify', {
         $and: [
           {
@@ -217,24 +223,47 @@ export function apply(ctx: Context, config: Config) {
           },
           {
             banned: {
-              $lt: new Date().getTime() - 1000 * 60 * 60 * 24 * 3,
+              $lt:
+                new Date().getTime() -
+                1000 * 60 * 60 * 24 * config.waitDuration,
             },
           },
         ],
       })
 
-      if (!result.length) return '目前没有超过 3 天未自助解禁的成员。'
+      if (!result.length)
+        return `目前没有超过 ${config.waitDuration} 天未自助解禁的成员。`
 
       if (options.yes) {
         ;(async () => {
           for (const r of result) {
             await sleep(5000)
+
             logger.info(`Kick: ${r.qq} in ${r.group}`)
-            ;(ctx.bots[0] as OneBotBot).internal.setGroupKickAsync(
-              r.group,
-              r.qq,
-              false
-            )
+
+            try {
+              await ctx.database.upsert(
+                'verify',
+                [
+                  {
+                    qq: r.qq,
+                    group: r.group,
+                    banned: 0,
+                  },
+                ],
+                ['qq', 'group']
+              )
+
+              // 踢出
+              ;(ctx.bots[0] as OneBotBot).internal.setGroupKickAsync(
+                r.group,
+                r.qq,
+                false
+              )
+            } catch (e: unknown) {
+              logger.info('Kick failed:')
+              logger.info(e)
+            }
           }
         })()
 
@@ -243,11 +272,13 @@ export function apply(ctx: Context, config: Config) {
 
       return (
         <message forward>
-          <message>以下 {result.length} 名成员超过 3 天未自助解禁：</message>
+          <message>
+            以下 {result.length} 名成员超过 {config.waitDuration} 天未自助解禁：
+          </message>
           {result.map((x) => (
             <message>
-              所在群：{x.group}
-              QQ：{x.qq}
+              <p>所在群：{x.group}</p>
+              <p>QQ：{x.qq}</p>
             </message>
           ))}
           <message>使用 'clean -y' 自动踢出这些成员。</message>
