@@ -232,29 +232,35 @@ export function apply(ctx: Context, config: Config) {
   })
 
   // 自助解禁http版
-  ctx.router.get('/unban', async (c) => {
-    try {
-      // 获得 QQ
-      const qq = Number(c.query.qq)
-
-      logger.info(`Self-unban: ${qq}`)
-
-      // 检测 QQ 是否合法
-      if (!(qq > 10000)) throw new Error()
-
-      // 执行解禁
-      selfUnban(ctx, config, qq)
-      
-    } catch (e: unknown) {
-      logger.info('Self-unban failed:')
-      logger.info(e)
-    }
-  })
+  if(config.allowHTTP){
+    ctx.router.get('/unban', async (c) => {
+      try {
+        // 获得 QQ
+        const qq = Number(c.query.qq)
+  
+        logger.info(`Self-unban: ${qq}`)
+  
+        // 检测 QQ 是否合法
+        if (!(qq > 10000)) throw new Error()
+  
+        // 执行解禁
+        selfUnban(ctx, config, qq)
+        
+      } catch (e: unknown) {
+        logger.info('Self-unban failed:')
+        logger.info(e)
+      }
+    })
+  }
+  
 
   // 自助解禁事件版
-  ctx.on("verify/selfUnban",(qq)=>{
-    selfUnban(ctx, config, qq)
-  })
+  if(config.allowEvent){
+    ctx.on("verify/selfUnban",(qq)=>{
+      selfUnban(ctx, config, qq)
+    })
+  }
+  
 
   // clean 指令
   ctx
