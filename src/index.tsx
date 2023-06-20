@@ -6,6 +6,19 @@ export const name = 'verify'
 export interface Config {
   banDuration: number
   waitDuration: number
+  allowHTTP: boolean
+  allowEvent: boolean
+
+  listOnly:boolean
+  groupList:string[]
+  
+  message:{
+    welcome:string
+    ban:string
+    unban:string
+  }
+  
+
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -16,12 +29,38 @@ export const Config: Schema<Config> = Schema.intersect([
     waitDuration: Schema.number()
       .default(3)
       .description('踢出前等待的时长（天），默认 3 天。'),
+    allowHTTP: Schema.boolean()
+      .default(true)
+      .description('开启HTTP自助解禁'),
+    allowEvent: Schema.boolean()
+      .default(true)
+      .description('开启koishi事件自助解禁')
   }).description('基础'),
+  Schema.object({
+    listOnly: Schema.boolean().default(false),
+    groupList: Schema.array(Schema.string())
+  }).description('组群设置'),
+  Schema.object({
+    message:Schema.object({
+      welcome:Schema.string()
+        .role('textarea')
+        .default("欢迎小伙伴入群~请认真阅读群公告，阅读后点击公告中的「参与讨论」即可解禁哦~"),
+      ban:Schema.string()
+        .role('textarea')
+        .default("小伙伴你好~提问和发言前请先看群公告哦~不看群公告就发言会导致你被踢出本群，还请注意~"),
+      unban:Schema.string()
+        .role('textarea')
+        .default("已成功解禁，小伙伴现在可以开始参与交流了~聊天时注意热情、友善哦~")
+    })
+  }).description('文本')
 ])
 
 declare module 'koishi' {
   interface Tables {
     verify: Verify
+  }
+  interface Events {
+    "verify/selfUnban"(qq:number):void
   }
 }
 
@@ -85,6 +124,30 @@ const unban = async (bot: Bot, config: Config, qq: number, group: number) => {
   )
 }
 
+const selfUnban = async (ctx:Context, config: Config, qq: number) => {
+  // 检查 QQ 是否在 verify 表里，且被禁言中
+  const result = await ctx.database.get('verify', {
+    qq,
+    banned: {
+      $ne: 0,
+    },
+  })
+
+  // 对每个群解禁
+  for (const r of result) {
+    const bot = ctx.bots[0] as Bot
+
+    await unban(bot as OneBotBot, config, qq, r.group)
+
+    await bot.sendMessage(
+      String(r.group),
+      <>
+        <at id={qq} />{config.message.unban}
+      </>
+    )
+  }
+}
+
 export function apply(ctx: Context, config: Config) {
   const logger = ctx.logger('verify')
 
@@ -122,16 +185,16 @@ export function apply(ctx: Context, config: Config) {
   ctx.on('guild-member-added', (session) => {
     logger.info(`Member ${session.userId} added into ${session.channelId}`)
 
-    // 禁言对应用户
-    ban(session.bot, config, Number(session.userId), Number(session.channelId))
-
-    // 发送入群欢迎消息
-    session.send(
-      <>
-        <at id={session.userId} />
-        欢迎小伙伴入群~请认真阅读群公告，阅读后点击公告中的「参与讨论」即可解禁哦~
-      </>
-    )
+    if(config.listOnly && (config.groupList.indexOf(session.channelId)!=-1)){
+      // 禁言对应用户
+      ban(session.bot, config, Number(session.userId), Number(session.channelId))
+      // 发送入群欢迎消息
+      session.send(
+        <>
+          <at id={session.userId} />{config.message.welcome}
+        </>
+      )
+    }    
   })
 
   // 注册根指令
@@ -152,8 +215,7 @@ export function apply(ctx: Context, config: Config) {
     // 发送提示消息
     return (
       <>
-        <at id={qq} />
-        小伙伴你好~提问和发言前请先看群公告哦~不看群公告就发言会导致你被踢出本群，还请注意~
+        <at id={qq} />{config.message.ban}
       </>
     )
   })
@@ -169,44 +231,36 @@ export function apply(ctx: Context, config: Config) {
     unban(session.bot, config, Number(qq), Number(session.channelId))
   })
 
-  // 自助解禁
-  ctx.router.get('/unban', async (c) => {
-    try {
-      // 获得 QQ
-      const qq = Number(c.query.qq)
-
-      logger.info(`Self-unban: ${qq}`)
-
-      // 检测 QQ 是否合法
-      if (!(qq > 10000)) throw new Error()
-
-      // 检查 QQ 是否在 verify 表里，且被禁言中
-      const result = await ctx.database.get('verify', {
-        qq,
-        banned: {
-          $ne: 0,
-        },
-      })
-
-      // 对每个群解禁
-      for (const r of result) {
-        const bot = ctx.bots[0] as Bot
-
-        await unban(bot as OneBotBot, config, qq, r.group)
-
-        await bot.sendMessage(
-          String(r.group),
-          <>
-            <at id={qq} />
-            已成功解禁，小伙伴现在可以开始参与交流了~聊天时注意热情、友善哦~
-          </>
-        )
+  // 自助解禁http版
+  if(config.allowHTTP){
+    ctx.router.get('/unban', async (c) => {
+      try {
+        // 获得 QQ
+        const qq = Number(c.query.qq)
+  
+        logger.info(`Self-unban: ${qq}`)
+  
+        // 检测 QQ 是否合法
+        if (!(qq > 10000)) throw new Error()
+  
+        // 执行解禁
+        selfUnban(ctx, config, qq)
+        
+      } catch (e: unknown) {
+        logger.info('Self-unban failed:')
+        logger.info(e)
       }
-    } catch (e: unknown) {
-      logger.info('Self-unban failed:')
-      logger.info(e)
-    }
-  })
+    })
+  }
+  
+
+  // 自助解禁事件版
+  if(config.allowEvent){
+    ctx.on("verify/selfUnban",(qq)=>{
+      selfUnban(ctx, config, qq)
+    })
+  }
+  
 
   // clean 指令
   ctx
