@@ -4,12 +4,14 @@ import { Bot, Context, Schema, sleep } from 'koishi'
 export const name = 'verify'
 
 export interface Config {
+  banJoined: boolean
   banDuration: number
   waitDuration: number
 }
 
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
+    banJoined: Schema.boolean().default(true).description('禁言新入群的用户。'),
     banDuration: Schema.number()
       .default(15 * 24 * 60 * 60)
       .description('入群后禁言的时长（秒），默认 15 天。'),
@@ -118,21 +120,27 @@ export function apply(ctx: Context, config: Config) {
     }
   )
 
-  // 有人加群时
-  ctx.on('guild-member-added', (session) => {
-    logger.info(`Member ${session.userId} added into ${session.channelId}`)
+  if (config.banJoined)
+    // 有人加群时
+    ctx.on('guild-member-added', (session) => {
+      logger.info(`Member ${session.userId} added into ${session.channelId}`)
 
-    // 禁言对应用户
-    ban(session.bot, config, Number(session.userId), Number(session.channelId))
+      // 禁言对应用户
+      ban(
+        session.bot,
+        config,
+        Number(session.userId),
+        Number(session.channelId)
+      )
 
-    // 发送入群欢迎消息
-    session.send(
-      <>
-        <at id={session.userId} />
-        欢迎小伙伴入群~请认真阅读群公告，阅读后点击公告中的「参与讨论」即可解禁哦~
-      </>
-    )
-  })
+      // 发送入群欢迎消息
+      session.send(
+        <>
+          <at id={session.userId} />
+          欢迎小伙伴入群~请认真阅读群公告，阅读后点击公告中的「参与讨论」即可解禁哦~
+        </>
+      )
+    })
 
   // 注册根指令
   ctx.command('verify', {
@@ -152,8 +160,13 @@ export function apply(ctx: Context, config: Config) {
     // 发送提示消息
     return (
       <>
-        <at id={qq} />
-        小伙伴你好~提问和发言前请先看群公告哦~不看群公告就发言会导致你被踢出本群，还请注意~
+        <p>
+          <at id={qq} />
+        </p>
+        <p>
+          小伙伴你好~提问和发言前请先看群公告哦~不看群公告就发言会导致你被踢出本群，还请注意~
+        </p>
+        <p>看完群公告内群规后可以点击群规下方的「自助解禁」按钮解禁哦~</p>
       </>
     )
   })
@@ -198,7 +211,7 @@ export function apply(ctx: Context, config: Config) {
           String(r.group),
           <>
             <at id={qq} />
-            已成功解禁，小伙伴现在可以开始参与交流了~聊天时注意热情、友善哦~
+            已成功解禁，小伙伴现在可以参与交流了~聊天时注意热情、友善哦~
           </>
         )
       }
